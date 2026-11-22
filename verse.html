@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>UNO Show 'em No Mercy - Chơi Online</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter & Chakra Petch cho phong cách game hiện đại -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:ital,wght@0,600;0,700;1,700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Tone.js cho hiệu ứng âm thanh sinh động không cần file ngoài -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
+            overflow-x: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .font-game {
+            font-family: 'Chakra Petch', sans-serif;
+        }
+        /* Hiệu ứng bàn bài Felt Neon */
+        .poker-table-bg {
+            background: radial-gradient(circle at center, #162038 0%, #0b101d 65%, #060911 100%);
+            box-shadow: inset 0 0 80px rgba(0, 0, 0, 0.85);
+        }
+        /* Thiết kế lá bài UNO */
+        .uno-card {
+            aspect-ratio: 2.5 / 3.6;
+            border-radius: 0.75rem;
+            position: relative;
+            transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, filter 0.2s ease;
+            box-shadow: 0 6px 14px rgba(0, 0, 0, 0.55), inset 0 0 0 2px rgba(255,255,255,0.85);
+            flex-shrink: 0;
+        }
+        .uno-card-playable {
+            cursor: pointer;
+        }
+        .uno-card-playable:hover {
+            transform: translateY(-16px) scale(1.06);
+            box-shadow: 0 14px 25px rgba(255, 255, 255, 0.25), inset 0 0 0 2.5px #ffffff;
+            z-index: 30;
+        }
+        .uno-card-disabled {
+            filter: brightness(0.55) saturate(0.75);
+            cursor: not-allowed;
+        }
+        .uno-oval {
+            position: absolute;
+            inset: 14% 10%;
+            background: rgba(255, 255, 255, 0.94);
+            border-radius: 50%;
+            transform: rotate(-24deg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: inset 0 2px 6px rgba(0,0,0,0.25);
+        }
+        .uno-oval-inner {
+            transform: rotate(24deg);
+            font-family: 'Chakra Petch', sans-serif;
+            font-weight: 800;
+            text-shadow: 1px 1px 0px rgba(0,0,0,0.15);
+        }
+        /* Màu sắc lá bài */
+        .card-red { background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%); }
+        .card-blue { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); }
+        .card-green { background: linear-gradient(135deg, #22c55e 0%, #15803d 100%); }
+        .card-yellow { background: linear-gradient(135deg, #facc15 0%, #ca8a04 100%); }
+        .card-wild {
+            background: conic-gradient(from 45deg, #ef4444 0deg 90deg, #3b82f6 90deg 180deg, #facc15 180deg 270deg, #22c55e 270deg 360deg);
+        }
+        .text-card-red { color: #dc2626; }
+        .text-card-blue { color: #2563eb; }
+        .text-card-green { color: #16a34a; }
+        .text-card-yellow { color: #ca8a04; }
+        .text-card-wild { color: #111827; }
+
+        /* Thanh cuộn tay bài mượt */
+        .hand-scroll::-webkit-scrollbar {
+            height: 6px;
+        }
+        .hand-scroll::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 999px;
+        }
+        .hand-scroll::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.4);
+            border-radius: 999px;
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.6); }
+            50% { box-shadow: 0 0 30px rgba(239, 68, 68, 0.95); }
+        }
+        .active-turn-ring {
+            animation: pulseGlow 1.6s infinite;
+        }
+        @keyframes spinSlow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        .spin-indicator {
+            animation: spinSlow 8s linear infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col poker-table-bg">
+
+    <!-- Thông báo Toast (Thay thế hoàn toàn alert/confirm) -->
+    <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-11/12 max-w-md pointer-events-none"></div>
+
+    <!-- Header chung -->
+    <header class="w-full px-4 py-3 bg-slate-950/80 backdrop-blur-md border-b border-slate-800/80 flex items-center justify-between z-30">
+        <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 via-amber-500 to-yellow-400 flex items-center justify-center shadow-lg shadow-red-600/30 font-game font-black text-slate-950 text-sm tracking-tighter">
+                UNO
+            </div>
+            <div>
+                <h1 class="font-game font-bold text-base sm:text-lg leading-none tracking-wide text-white">
+                    SHOW 'EM <span class="text-red-500">NO MERCY</span>
+                </h1>
+                <p class="text-[11px] text-slate-400">168 Lá • Cộng Dồn Tử Thần • Luật 25 Lá</p>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button id="btn-sound" onclick="toggleSound()" class="p-2.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 transition text-sm" title="Bật/Tắt âm thanh">
+                <i id="sound-icon" class="fa-solid fa-volume-high"></i>
+            </button>
+            <button onclick="toggleRulesModal(true)" class="px-3 py-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-amber-400 font-semibold text-xs sm:text-sm flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-book-skull"></i>
+                <span>Luật Chơi</span>
+            </button>
+            <button id="btn-leave-room" onclick="leaveRoom()" class="hidden px-3 py-2 rounded-xl bg-red-950/80 hover:bg-red-900 border border-red-700/50 text-red-300 font-semibold text-xs sm:text-sm transition">
+                <i class="fa-solid fa-right-from-bracket"></i>
+                <span class="hidden sm:inline ml-1">Rời Phòng</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- MÀN HÌNH 1: SẢNH CHÍNH (TẠO PHÒNG / VÀO PHÒNG) -->
+    <main id="screen-home" class="flex-1 flex items-center justify-center p-4">
+        <div class="w-full max-w-md bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+            <div class="text-center mb-6">
+                <span class="inline-block px-3 py-1 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-wider mb-2">
+                    Multiplayer 2 - 6 Người
+                </span>
+                <h2 class="font-game text-2xl sm:text-3xl font-bold text-white">Sẵn Sàng Hủy Diệt Tình Bạn?</h2>
+                <p class="text-slate-400 text-sm mt-1">Tạo phòng lấy mã Room Code hoặc nhập mã từ bạn bè để chiến ngay.</p>
+            </div>
+
+            <!-- Nhập tên người chơi -->
+            <div class="mb-5">
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5">Tên hiển thị của bạn</label>
+                <div class="relative">
+                    <i class="fa-solid fa-user-astronaut absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                    <input id="input-player-name" type="text" maxlength="16" placeholder="Nhập biệt danh (VD: Thần Bài)"
+                        class="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-amber-500 focus:outline-none text-white font-medium transition">
+                </div>
+            </div>
+
+            <!-- Nút Tạo Phòng Mới -->
+            <button id="btn-create-room" onclick="createRoom()"
+                class="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold text-base shadow-lg shadow-red-600/25 transition transform active:scale-[0.99] flex items-center justify-center gap-2 mb-5">
+                <i class="fa-solid fa-plus-circle"></i>
+                <span>Tạo Phòng Mới (2-6 Người)</span>
+            </button>
+
+            <div class="relative flex py-2 items-center mb-5">
+                <div class="flex-grow border-t border-slate-800"></div>
+                <span class="flex-shrink mx-3 text-xs uppercase text-slate-500 font-semibold">Hoặc tham gia bằng mã</span>
+                <div class="flex-grow border-t border-slate-800"></div>
+            </div>
+
+            <!-- Nhập Room Code -->
+            <div class="flex gap-2">
+                <input id="input-room-code" type="text" maxlength="6" placeholder="MÃ PHÒNG"
+                    class="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-700 focus:border-blue-500 focus:outline-none text-center font-game text-lg font-bold tracking-widest uppercase text-amber-400 placeholder:text-slate-600">
+                <button id="btn-join-room" onclick="joinRoom()"
+                    class="px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold whitespace-nowrap shadow-lg shadow-blue-600/25 transition active:scale-[0.98]">
+                    Vào Phòng
+                </button>
+            </div>
+
+            <!-- Thông báo trạng thái kết nối -->
+            <div id="connection-status" class="mt-5 text-center text-xs text-slate-500 flex items-center justify-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                <span>Đang kết nối máy chủ phòng chơi...</span>
+            </div>
+        </div>
+    </main>
+
+    <!-- MÀN HÌNH 2: PHÒNG CHỜ (LOBBY) -->
+    <section id="screen-lobby" class="hidden flex-1 flex items-center justify-center p-4">
+        <div class="w-full max-w-xl bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+                <div>
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Mã Phòng (Room Code)</span>
+                    <div class="flex items-center gap-3 mt-1">
+                        <span id="lobby-room-code" class="font-game text-3xl sm:text-4xl font-black tracking-widest text-amber-400">------</span>
+                        <button onclick="copyRoomCode()" class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition">
+                            <i class="fa-regular fa-copy"></i>
+                            <span>Sao chép</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="bg-slate-950/80 px-4 py-2.5 rounded-2xl border border-slate-800 text-right">
+                    <div class="text-xs text-slate-400">Số người chơi</div>
+                    <div class="font-game text-xl font-bold text-white"><span id="lobby-player-count">1</span> / 6</div>
+                </div>
+            </div>
+
+            <!-- Danh sách người chơi trong phòng -->
+            <div class="my-6">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">Danh sách người tham gia</h3>
+                <div id="lobby-players-list" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <!-- Render danh sách người chơi tại đây -->
+                </div>
+            </div>
+
+            <!-- Khu vực điều khiển của Chủ Phòng -->
+            <div id="lobby-host-controls" class="hidden">
+                <button id="btn-start-game" onclick="startGame()"
+                    class="w-full py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-lg shadow-lg shadow-emerald-600/25 transition flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-play"></i>
+                    <span>Bắt Đầu Ván Đấu</span>
+                </button>
+                <p class="text-center text-xs text-slate-400 mt-2">Cần tối thiểu 2 người chơi (tối đa 6 người) để bắt đầu.</p>
+            </div>
+
+            <div id="lobby-guest-wait" class="hidden text-center py-4 px-4 rounded-2xl bg-slate-950/70 border border-slate-800">
+                <i class="fa-solid fa-hourglass-half text-amber-400 text-xl mb-1 animate-bounce"></i>
+                <p class="text-sm font-medium text-slate-300">Đang chờ chủ phòng nhấn Bắt Đầu...</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- MÀN HÌNH 3: BÀN CHƠI UNO NO MERCY -->
+    <section id="screen-game" class="hidden flex-1 flex flex-col justify-between p-2 sm:p-4 max-w-7xl w-full mx-auto relative">
+        
+        <!-- Thanh trên: Danh sách đối thủ & Trạng thái ván đấu -->
+        <div class="w-full">
+            <div class="flex items-center justify-between mb-2 px-1">
+                <div class="flex items-center gap-2 text-xs">
+                    <span class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 font-game text-amber-400 font-bold">
+                        PHÒNG: <span id="game-room-code">------</span>
+                    </span>
+                    <span id="game-direction-badge" class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 flex items-center gap-1.5">
+                        <i id="direction-icon" class="fa-solid fa-rotate-right text-emerald-400"></i>
+                        <span id="direction-text">Thuận chiều</span>
+                    </span>
+                </div>
+                <div class="text-xs text-slate-400">
+                    Bộ bài còn: <span id="deck-count" class="font-bold text-white">168</span> lá
+                </div>
+            </div>
+
+            <!-- Danh sách tất cả người chơi (Dạng thẻ nhỏ gọn) -->
+            <div id="opponents-bar" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                <!-- Render thẻ thông tin từng người chơi -->
+            </div>
+        </div>
+
+        <!-- Khu vực trung tâm bàn bài: Bộ bài rút, Bài đánh, Màu hiện tại & Cộng dồn phạt -->
+        <div class="my-auto py-3 flex flex-col items-center justify-center relative">
+            
+            <!-- Banner thông báo lượt & Lịch sử nước đi gần nhất -->
+            <div id="last-action-banner" class="mb-3 px-4 py-1.5 rounded-full bg-slate-900/90 border border-slate-700/80 text-xs sm:text-sm font-medium text-slate-200 shadow-lg text-center max-w-md truncate">
+                Chào mừng đến với UNO No Mercy!
+            </div>
+
+            <!-- Cảnh báo Cộng Dồn (Stack Penalty) nếu đang có -->
+            <div id="penalty-stack-badge" class="hidden mb-3 px-4 py-1.5 rounded-2xl bg-red-600/95 text-white font-game font-black text-sm sm:text-base tracking-wide shadow-lg shadow-red-600/40 animate-bounce flex items-center gap-2">
+                <i class="fa-solid fa-fire"></i>
+                <span>CỘNG DỒN PHẠT: +<span id="penalty-stack-value">0</span> LÁ!</span>
+            </div>
+
+            <!-- Bàn bài chính -->
+            <div class="flex items-center justify-center gap-5 sm:gap-10">
+                <!-- Cọc bài rút (Draw Pile) -->
+                <div class="flex flex-col items-center gap-1.5">
+                    <button id="btn-draw-pile" onclick="handleDrawAction()"
+                        class="w-24 sm:w-28 uno-card bg-slate-900 border-2 border-slate-700 hover:border-amber-400 flex flex-col items-center justify-center group transition transform active:scale-95 relative overflow-hidden">
+                        <div class="absolute inset-2 rounded-lg border border-red-500/30 bg-gradient-to-br from-slate-800 to-slate-950 flex flex-col items-center justify-center">
+                            <span class="font-game font-black text-lg sm:text-xl text-red-500 tracking-tighter -rotate-12">UNO</span>
+                            <span class="text-[9px] font-bold text-amber-400 uppercase tracking-widest mt-0.5">NO MERCY</span>
+                        </div>
+                    </button>
+                    <span id="draw-pile-label" class="text-[11px] font-semibold text-slate-400">Rút bài</span>
+                </div>
+
+                <!-- Chỉ báo Màu hiện tại & Chiều đánh -->
+                <div class="flex flex-col items-center gap-2">
+                    <div id="active-color-orb" class="w-14 h-14 sm:w-16 sm:h-16 rounded-full border-4 border-white/80 shadow-xl flex items-center justify-center transition-colors duration-300 bg-red-500">
+                        <i id="center-dir-icon" class="fa-solid fa-arrows-rotate text-white text-xl sm:text-2xl spin-indicator"></i>
+                    </div>
+                    <span id="active-color-label" class="text-xs font-bold uppercase tracking-wider text-white">MÀU ĐỎ</span>
+                </div>
+
+                <!-- Cọc bài đánh (Discard Pile) -->
+                <div class="flex flex-col items-center gap-1.5">
+                    <div id="discard-pile-slot" class="w-24 sm:w-28">
+                        <!-- Render lá bài trên cùng của Discard Pile -->
+                    </div>
+                    <span class="text-[11px] font-semibold text-slate-400">Bài vừa đánh</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Khu vực dưới: Tay bài của người chơi hiện tại -->
+        <div class="w-full bg-slate-950/85 backdrop-blur-md border border-slate-800/90 rounded-3xl p-3 sm:p-4 shadow-2xl">
+            <div class="flex items-center justify-between gap-2 mb-2.5 px-1">
+                <div class="flex items-center gap-2">
+                    <span id="my-turn-indicator" class="px-3 py-1 rounded-full bg-slate-800 text-slate-400 text-xs font-bold">
+                        Đang chờ lượt...
+                    </span>
+                    <span class="text-xs text-slate-400">
+                        Trên tay: <strong id="my-card-count" class="text-white text-sm">0</strong>/25 lá
+                    </span>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <!-- Nút Hô UNO! -->
+                    <button id="btn-shout-uno" onclick="shoutUno()"
+                        class="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-red-600 hover:from-amber-400 hover:to-red-500 text-white font-game font-black text-xs sm:text-sm tracking-wider shadow-lg shadow-red-600/30 transition transform active:scale-95">
+                        HÔ UNO!
+                    </button>
+                    <!-- Nút Bắt Lỗi UNO đối thủ -->
+                    <button id="btn-catch-uno" onclick="catchUnoPenalty()"
+                        class="hidden px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-lg transition animate-pulse">
+                        <i class="fa-solid fa-gavel mr-1"></i>Bắt lỗi UNO!
+                    </button>
+                </div>
+            </div>
+
+            <!-- Danh sách lá bài trên tay -->
+            <div id="my-hand-container" class="flex items-center gap-2 sm:gap-3 overflow-x-auto hand-scroll py-3 px-2 min-h-[145px] sm:min-h-[168px]">
+                <!-- Render các lá bài trên tay người chơi -->
+            </div>
+        </div>
+    </section>
+
+    <!-- MODAL 1: CHỌN MÀU (WILD CARD) -->
+    <div id="modal-color-picker" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl">
+            <h3 class="font-game text-xl font-bold text-white mb-1">Chọn Màu Tiếp Theo</h3>
+            <p id="color-picker-subtitle" class="text-xs text-slate-400 mb-5">Chọn một màu để tiếp tục ván đấu</p>
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="confirmWildColor('red')" class="py-6 rounded-2xl bg-red-600 hover:bg-red-500 text-white font-game font-bold text-lg shadow-lg transition transform active:scale-95">ĐỎ</button>
+                <button onclick="confirmWildColor('blue')" class="py-6 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-game font-bold text-lg shadow-lg transition transform active:scale-95">XANH DƯƠNG</button>
+                <button onclick="confirmWildColor('green')" class="py-6 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-game font-bold text-lg shadow-lg transition transform active:scale-95">XANH LÁ</button>
+                <button onclick="confirmWildColor('yellow')" class="py-6 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-game font-bold text-lg shadow-lg transition transform active:scale-95">VÀNG</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: CHỌN NGƯỜI CHƠI (LÁ SỐ 7 ĐỔI BÀI HOẶC WILD COLOR ROULETTE) -->
+    <div id="modal-player-picker" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl">
+            <h3 id="player-picker-title" class="font-game text-xl font-bold text-amber-400 mb-1">Chọn Đối Thủ</h3>
+            <p id="player-picker-desc" class="text-xs text-slate-400 mb-4">Chọn người chơi để áp dụng hiệu ứng lá bài</p>
+            <div id="player-picker-list" class="flex flex-col gap-2.5">
+                <!-- Render nút chọn từng đối thủ -->
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: KẾT THÚC VÁN ĐẤU -->
+    <div id="modal-game-over" class="hidden fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-amber-500/40 rounded-3xl p-7 max-w-md w-full text-center shadow-2xl">
+            <div class="w-16 h-16 rounded-full bg-amber-500/20 border border-amber-400 text-amber-400 flex items-center justify-center mx-auto mb-4 text-3xl">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <h2 class="font-game text-3xl font-black text-white mb-1">VÁN ĐẤU KẾT THÚC!</h2>
+            <p id="winner-announcement" class="text-lg font-bold text-amber-400 mb-4">Người chiến thắng: ...</p>
+            <div id="game-over-reason" class="text-xs text-slate-400 bg-slate-950 rounded-xl p-3 mb-6 border border-slate-800">
+                ...
+            </div>
+            <div class="flex gap-3">
+                <button id="btn-play-again" onclick="resetToLobby()" class="flex-1 py-3.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold shadow-lg transition">
+                    Về Phòng Chờ
+                </button>
+                <button onclick="leaveRoom()" class="px-5 py-3.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition">
+                    Thoát
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 4: HƯỚNG DẪN LUẬT CHƠI UNO NO MERCY -->
+    <div id="modal-rules" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+                <h3 class="font-game text-xl font-bold text-amber-400"><i class="fa-solid fa-skull-crossbones mr-2"></i>Luật Chơi UNO No Mercy</h3>
+                <button onclick="toggleRulesModal(false)" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="space-y-3 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                <div class="p-3 rounded-xl bg-red-950/40 border border-red-800/50">
+                    <strong class="text-red-400 block mb-1">1. Luật Nhân Từ (Mercy Rule - 25 Lá):</strong>
+                    Bất kỳ người chơi nào cầm từ <strong>25 lá bài trở lên</strong> trên tay sẽ <strong>BỊ LOẠI NGAY LẬP TỨC</strong> khỏi ván đấu!
+                </div>
+                <div class="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <strong class="text-amber-400 block mb-1">2. Cộng Dồn Phạt (Stacking):</strong>
+                    Khi bị đánh lá phạt (+2, +4, Reverse +4, Wild +6, Wild +10), bạn có thể đánh tiếp một lá phạt có giá trị <strong>bằng hoặc lớn hơn</strong> để dồn toàn bộ số bài phạt cho người kế tiếp. Nếu không có, bạn phải rút toàn bộ số bài dồn đó!
+                </div>
+                <div class="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <strong class="text-blue-400 block mb-1">3. Rút Cho Đến Khi Đánh Được:</strong>
+                    Nếu tới lượt mà không có lá bài hợp lệ, bạn phải rút liên tục cho đến khi rút được lá đánh được (hoặc chạm mốc 25 lá và bị loại).
+                </div>
+                <div class="p-3 rounded-xl bg-slate-950 border border-slate-800">
+                    <strong class="text-emerald-400 block mb-1">4. Các Lá Bài Đặc Biệt Mới:</strong>
+                    <ul class="list-disc pl-4 space-y-1 mt-1 text-slate-400">
+                        <li><strong>Số 0:</strong> Tất cả người chơi chuyển toàn bộ bài trên tay cho người kế tiếp theo chiều đánh.</li>
+                        <li><strong>Số 7:</strong> Bạn chọn 1 đối thủ bất kỳ để hoán đổi toàn bộ bài trên tay.</li>
+                        <li><strong>Discard All (Bỏ hết màu):</strong> Bỏ toàn bộ các lá cùng màu đó trên tay bạn xuống.</li>
+                        <li><strong>Skip Everyone (Cấm tất cả):</strong> Cấm lượt tất cả mọi người, bạn được đánh tiếp ngay lập tức!</li>
+                        <li><strong>Reverse +4:</strong> Đảo chiều đánh và phạt người kế tiếp (theo chiều mới) +4 lá.</li>
+                        <li><strong>Wild Color Roulette:</strong> Người kế tiếp chọn 1 màu và phải rút bài liên tục cho đến khi ra đúng màu đó.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIREBASE & LOGIC GAME -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // =========================================================================
+        // 1. CẤU HÌNH FIREBASE (Hỗ trợ cả môi trường nhúng & tự host trên GitHub)
+        // =========================================================================
+        // LƯU Ý KHI UP LÊN GITHUB PAGES:
+        // Nếu bạn host tĩnh trên GitHub Pages, hãy thay thế đối tượng fallbackConfig bên dưới
+        // bằng firebaseConfig từ Firebase Console của bạn (Project Settings -> General -> Your apps).
+        const fallbackConfig = {
+  apiKey: "AIzaSyC1sH-Q5dMhV9FoHR3Or2Xp8dt28c1FlTE",
+  authDomain: "uno-no-mercy-5d792.firebaseapp.com",
+  projectId: "uno-no-mercy-5d792",
+  storageBucket: "uno-no-mercy-5d792.firebasestorage.app",
+  messagingSenderId: "795750580273",
+  appId: "1:795750580273:web:90c0a70c8c7f530ec01510",
+  measurementId: "G-BF58RJMTP4"
+};
+
+        const firebaseConfig = typeof __firebase_config !== 'undefined'
+            ? JSON.parse(__firebase_config)
+            : fallbackConfig;
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'uno-no-mercy-github-v1';
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+
+        // Trạng thái toàn cục của Client
+        let currentUser = null;
+        let currentRoomCode = null;
+        let roomUnsubscribe = null;
+        let roomData = null;
+        let soundEnabled = true;
+        let pendingWildCardIndex = null;
+        let pendingSevenCardIndex = null;
+
+        // =========================================================================
+        // 2. HỆ THỐNG ÂM THANH TONE.JS (Không cần file âm thanh ngoài)
+        // =========================================================================
+        let synth = null;
+        function playTone(type) {
+            if (!soundEnabled) return;
+            try {
+                if (!synth) synth = new Tone.PolySynth(Tone.Synth).toDestination();
+                if (Tone.context.state !== 'running') Tone.start();
+                if (type === 'play') synth.triggerAttackRelease("C5", "16n");
+                else if (type === 'draw') synth.triggerAttackRelease("G4", "32n");
+                else if (type === 'penalty') synth.triggerAttackRelease(["C3", "F#3"], "8n");
+                else if (type === 'uno') synth.triggerAttackRelease(["E5", "G5", "C6"], "8n");
+                else if (type === 'win') synth.triggerAttackRelease(["C5", "E5", "G5", "C6"], "4n");
+            } catch (e) { /* Bỏ qua nếu trình duyệt chặn autoplay */ }
+        }
+
+        window.toggleSound = () => {
+            soundEnabled = !soundEnabled;
+            const icon = document.getElementById('sound-icon');
+            icon.className = soundEnabled ? 'fa-solid fa-volume-high' : 'fa-solid fa-volume-xmark text-red-400';
+            showToast(soundEnabled ? "Đã bật âm thanh" : "Đã tắt âm thanh", "info");
+        };
+
+        // =========================================================================
+        // 3. XÁC THỰC NGƯỜI DÙNG TRƯỚC KHI TRUY VẤN FIRESTORE
+        // =========================================================================
+        async function initAuth() {
+            const statusEl = document.getElementById('connection-status');
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
+            } catch (err) {
+                console.error("Lỗi xác thực:", err);
+                statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span><span class="text-red-400">Chưa cấu hình Firebase API Key (Xem hướng dẫn trong mã nguồn nếu chạy trên GitHub)</span>`;
+            }
+        }
+
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                currentUser = user;
+                const statusEl = document.getElementById('connection-status');
+                statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span class="text-emerald-400">Đã kết nối máy chủ • Sẵn sàng chơi!</span>`;
+            }
+        });
+
+        initAuth();
+
+        // =========================================================================
+        // 4. BỘ BÀI 168 LÁ UNO SHOW 'EM NO MERCY CHUẨN XÁC
+        // =========================================================================
+        function buildNoMercyDeck() {
+            const colors = ['red', 'blue', 'green', 'yellow'];
+            const deck = [];
+            let uidCounter = 1;
+
+            // Mỗi màu có 36 lá (Tổng 4 màu = 144 lá)
+            for (const color of colors) {
+                // Số 0: 1 lá mỗi màu
+                deck.push({ id: uidCounter++, color, type: 'number', value: '0', penalty: 0 });
+                // Số 1 - 9: mỗi số 2 lá
+                for (let n = 1; n <= 9; n++) {
+                    deck.push({ id: uidCounter++, color, type: 'number', value: String(n), penalty: 0 });
+                    deck.push({ id: uidCounter++, color, type: 'number', value: String(n), penalty: 0 });
+                }
+                // Lá chức năng theo màu (mỗi loại 3 lá = 15 lá/màu -> 1 + 18 + 15 + 2 = 36 lá/màu)
+                for (let i = 0; i < 3; i++) {
+                    deck.push({ id: uidCounter++, color, type: 'skip', value: 'SKIP', penalty: 0 });
+                    deck.push({ id: uidCounter++, color, type: 'reverse', value: 'REV', penalty: 0 });
+                    deck.push({ id: uidCounter++, color, type: 'draw2', value: '+2', penalty: 2 });
+                    deck.push({ id: uidCounter++, color, type: 'discard_all', value: 'ALL', penalty: 0 });
+                    deck.push({ id: uidCounter++, color, type: 'skip_all', value: 'SKIP ALL', penalty: 0 });
+                }
+                // Draw 4 theo màu: 2 lá mỗi màu
+                for (let i = 0; i < 2; i++) {
+                    deck.push({ id: uidCounter++, color, type: 'draw4', value: '+4', penalty: 4 });
+                }
+            }
+
+            // 24 lá Wild đen đặc biệt (Tổng = 144 + 24 = 168 lá)
+            for (let i = 0; i < 8; i++) {
+                deck.push({ id: uidCounter++, color: 'wild', type: 'wild_rev4', value: 'REV +4', penalty: 4 });
+                deck.push({ id: uidCounter++, color: 'wild', type: 'wild_draw6', value: '+6', penalty: 6 });
+            }
+            for (let i = 0; i < 4; i++) {
+                deck.push({ id: uidCounter++, color: 'wild', type: 'wild_draw10', value: '+10', penalty: 10 });
+                deck.push({ id: uidCounter++, color: 'wild', type: 'wild_roulette', value: 'ROULETTE', penalty: 0 });
+            }
+
+            return shuffleArray(deck);
+        }
+
+        function shuffleArray(arr) {
+            const copy = [...arr];
+            for (let i = copy.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [copy[i], copy[j]] = [copy[j], copy[i]];
+            }
+            return copy;
+        }
+
+        function generateRoomCode() {
+            const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+            let code = '';
+            for (let i = 0; i < 6; i++) {
+                code += chars.charAt(Math.floor(Math.random() * chars.length));
+            }
+            return code;
+        }
+
+        // =========================================================================
+        // 5. QUẢN LÝ PHÒNG CHƠI (TẠO PHÒNG / VÀO PHÒNG / ĐỒNG BỘ REALTIME)
+        // =========================================================================
+        function getRoomDocRef(code) {
+            return doc(db, 'artifacts', appId, 'public', 'data', 'uno_rooms', code);
+        }
+
+        window.createRoom = async () => {
+            if (!currentUser) return showToast("Đang kết nối máy chủ, vui lòng thử lại sau giây lát!", "error");
+            const nameInput = document.getElementById('input-player-name').value.trim();
+            const playerName = nameInput || `Người chơi ${Math.floor(100 + Math.random() * 900)}`;
+
+            const code = generateRoomCode();
+            const roomRef = getRoomDocRef(code);
+
+            const initialRoomState = {
+                roomCode: code,
+                hostId: currentUser.uid,
+                status: 'lobby', // 'lobby' | 'playing' | 'finished'
+                createdAt: Date.now(),
+                players: [
+                    {
+                        uid: currentUser.uid,
+                        name: playerName,
+                        hand: [],
+                        eliminated: false,
+                        saidUno: false
+                    }
+                ],
+                deck: [],
+                discardPile: [],
+                currentTurnIndex: 0,
+                direction: 1, // 1: thuận chiều, -1: ngược chiều
+                activeColor: 'red',
+                pendingPenalty: 0,
+                pendingPenaltyType: null, // 'draw' | 'roulette' | null
+                rouletteTargetUid: null,
+                lastAction: `${playerName} đã tạo phòng ${code}.`,
+                winnerName: null,
+                winReason: null
+            };
+
+            try {
+                await setDoc(roomRef, initialRoomState);
+                subscribeToRoom(code);
+                showToast(`Đã tạo phòng ${code}! Chia sẻ mã cho bạn bè nhé.`, "success");
+            } catch (err) {
+                console.error(err);
+                showToast("Không thể tạo phòng. Kiểm tra kết nối mạng!", "error");
+            }
+        };
+
+        window.joinRoom = async () => {
+            if (!currentUser) return showToast("Đang kết nối máy chủ...", "error");
+            const code = document.getElementById('input-room-code').value.trim().toUpperCase();
+            if (code.length < 4) return showToast("Vui lòng nhập mã phòng hợp lệ!", "error");
+
+            const nameInput = document.getElementById('input-player-name').value.trim();
+            const playerName = nameInput || `Người chơi ${Math.floor(100 + Math.random() * 900)}`;
+
+            const roomRef = getRoomDocRef(code);
+            try {
+                const snap = await getDoc(roomRef);
+                if (!snap.exists()) {
+                    return showToast(`Không tìm thấy phòng có mã "${code}"!`, "error");
+                }
+                const data = snap.data();
+
+                // Kiểm tra xem người chơi đã ở trong phòng chưa
+                const existingIdx = data.players.findIndex(p => p.uid === currentUser.uid);
+                if (existingIdx === -1) {
+                    if (data.status !== 'lobby') {
+                        return showToast("Phòng này đang trong ván đấu, không thể tham gia!", "error");
+                    }
+                    if (data.players.length >= 6) {
+                        return showToast("Phòng đã đạt tối đa 6 người chơi!", "error");
+                    }
+                    const updatedPlayers = [
+                        ...data.players,
+                        {
+                            uid: currentUser.uid,
+                            name: playerName,
+                            hand: [],
+                            eliminated: false,
+                            saidUno: false
+                        }
+                    ];
+                    await updateDoc(roomRef, {
+                        players: updatedPlayers,
+                        lastAction: `${playerName} đã tham gia phòng.`
+                    });
+                }
+
+                subscribeToRoom(code);
+                showToast(`Đã vào phòng ${code}!`, "success");
+            } catch (err) {
+                console.error(err);
+                showToast("Lỗi khi tham gia phòng!", "error");
+            }
+        };
+
+        function subscribeToRoom(code) {
+            if (roomUnsubscribe) roomUnsubscribe();
+            currentRoomCode = code;
+            const roomRef = getRoomDocRef(code);
+
+            roomUnsubscribe = onSnapshot(roomRef, (docSnap) => {
+                if (!docSnap.exists()) {
+                    showToast("Phòng chơi đã bị giải tán!", "error");
+                    resetToHomeUI();
+                    return;
+                }
+                roomData = docSnap.data();
+                renderAppState();
+            }, (error) => {
+                console.error("Lỗi đồng bộ phòng:", error);
+                showToast("Mất đồng bộ với phòng chơi!", "error");
+            });
+        }
+
+        window.leaveRoom = async () => {
+            if (!currentRoomCode || !roomData || !currentUser) {
+                resetToHomeUI();
+                return;
+            }
+            const code = currentRoomCode;
+            const roomRef = getRoomDocRef(code);
+
+            try {
+                const remaining = roomData.players.filter(p => p.uid !== currentUser.uid);
+                if (remaining.length > 0) {
+                    const newHost = roomData.hostId === currentUser.uid ? remaining[0].uid : roomData.hostId;
+                    await updateDoc(roomRef, {
+                        players: remaining,
+                        hostId: newHost,
+                        lastAction: `Một người chơi đã rời phòng.`
+                    });
+                }
+            } catch (e) { /* Bỏ qua lỗi rời phòng */ }
+
+            if (roomUnsubscribe) roomUnsubscribe();
+            roomUnsubscribe = null;
+            currentRoomCode = null;
+            roomData = null;
+            resetToHomeUI();
+        };
+
+        function resetToHomeUI() {
+            document.getElementById('screen-home').classList.remove('hidden');
+            document.getElementById('screen-lobby').classList.add('hidden');
+            document.getElementById('screen-game').classList.add('hidden');
+            document.getElementById('btn-leave-room').classList.add('hidden');
+            closeAllModals();
+        }
+
+        window.copyRoomCode = () => {
+            if (!currentRoomCode) return;
+            const temp = document.createElement('textarea');
+            temp.value = currentRoomCode;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            showToast(`Đã sao chép mã phòng: ${currentRoomCode}`, "success");
+        };
+
+        // =========================================================================
+        // 6. LOGIC BẮT ĐẦU VÁN ĐẤU & LUẬT CHƠI UNO NO MERCY
+        // =========================================================================
+        window.startGame = async () => {
+            if (!roomData || roomData.hostId !== currentUser.uid) return;
+            if (roomData.players.length < 2) {
+                return showToast("Cần ít nhất 2 người chơi để bắt đầu!", "error");
+            }
+
+            let deck = buildNoMercyDeck();
+            // Chia mỗi người 7 lá bài
+            const updatedPlayers = roomData.players.map(p => ({
+                ...p,
+                hand: deck.splice(0, 7),
+                eliminated: false,
+                saidUno: false
+            }));
+
+            // Rút lá khởi đầu (ưu tiên lá số để mở màn mượt mà)
+            let firstCardIndex = deck.findIndex(c => c.type === 'number');
+            if (firstCardIndex === -1) firstCardIndex = 0;
+            const firstCard = deck.splice(firstCardIndex, 1)[0];
+
+            const roomRef = getRoomDocRef(currentRoomCode);
+            await updateDoc(roomRef, {
+                status: 'playing',
+                players: updatedPlayers,
+                deck: deck,
+                discardPile: [firstCard],
+                currentTurnIndex: 0,
+                direction: 1,
+                activeColor: firstCard.color === 'wild' ? 'red' : firstCard.color,
+                pendingPenalty: 0,
+                pendingPenaltyType: null,
+                rouletteTargetUid: null,
+                lastAction: `Ván đấu bắt đầu! Lượt đầu tiên của ${updatedPlayers[0].name}.`,
+                winnerName: null,
+                winReason: null
+            });
+            playTone('play');
+        };
+
+        window.resetToLobby = async () => {
+            if (!roomData || !currentRoomCode) return;
+            const roomRef = getRoomDocRef(currentRoomCode);
+            const resetPlayers = roomData.players.map(p => ({
+                ...p,
+                hand: [],
+                eliminated: false,
+                saidUno: false
+            }));
+            await updateDoc(roomRef, {
+                status: 'lobby',
+                players: resetPlayers,
+                deck: [],
+                discardPile: [],
+                pendingPenalty: 0,
+                pendingPenaltyType: null,
+                rouletteTargetUid: null,
+                winnerName: null
+            });
+            closeAllModals();
+        };
+
+        // Tìm người chơi hợp lệ kế tiếp (bỏ qua người đã bị loại do luật 25 lá)
+        function getNextActivePlayerIndex(players, currentIndex, direction, steps = 1) {
+            const count = players.length;
+            let idx = currentIndex;
+            let moved = 0;
+            let safety = 0;
+            while (moved < steps && safety < count * 4) {
+                idx = (idx + direction + count) % count;
+                if (!players[idx].eliminated) {
+                    moved++;
+                }
+                safety++;
+            }
+            return idx;
+        }
+
+        // Xáo lại bài từ Discard Pile nếu Deck hết
+        function replenishDeckIfNeeded(deck, discardPile) {
+            if (deck.length > 0) return { deck, discardPile };
+            if (discardPile.length <= 1) {
+                // Nếu vẫn thiếu bài do người chơi cầm quá nhiều, tạo thêm 1 bộ phụ
+                return { deck: buildNoMercyDeck(), discardPile };
+            }
+            const topCard = discardPile[discardPile.length - 1];
+            const rest = discardPile.slice(0, -1);
+            return {
+                deck: shuffleArray(rest),
+                discardPile: [topCard]
+            };
+        }
+
+        // Kiểm tra lá bài có hợp lệ để đánh không
+        function isCardPlayable(card, state) {
+            const topCard = state.discardPile[state.discardPile.length - 1];
+            if (!topCard) return true;
+
+            // 1. Nếu đang bị Roulette Color: không được đánh bài, bắt buộc phải rút
+            if (state.pendingPenaltyType === 'roulette') {
+                return false;
+            }
+
+            // 2. Nếu đang có cộng dồn phạt (+2, +4, +6, +10):
+            // Chỉ được đánh lá có penalty >= topCard.penalty (hoặc lá phạt tương đương)
+            if (state.pendingPenalty > 0 && state.pendingPenaltyType === 'draw') {
+                if (card.penalty && card.penalty > 0) {
+                    const currentPenaltyLevel = topCard.penalty || 2;
+                    return card.penalty >= currentPenaltyLevel;
+                }
+                return false;
+            }
+
+            // 3. Lá Wild đen luôn đánh được khi không bị khóa cộng dồn
+            if (card.color === 'wild') return true;
+
+            // 4. Cùng màu hiện tại hoặc cùng giá trị / chức năng
+            if (card.color === state.activeColor) return true;
+            if (card.value === topCard.value) return true;
+
+            return false;
+        }
+
+        // Xử lý khi người chơi bấm vào một lá bài trên tay
+        window.onCardClick = async (cardIndex) => {
+            if (!roomData || roomData.status !== 'playing') return;
+            const myPlayerIndex = roomData.players.findIndex(p => p.uid === currentUser.uid);
+            if (myPlayerIndex !== roomData.currentTurnIndex) {
+                return showToast("Chưa tới lượt của bạn!", "error");
+            }
+            const me = roomData.players[myPlayerIndex];
+            if (me.eliminated) return;
+
+            const card = me.hand[cardIndex];
+            if (!card || !isCardPlayable(card, roomData)) {
+                return showToast("Lá bài này không đánh được lúc này!", "error");
+            }
+
+            // Nếu là lá Wild -> Mở modal chọn màu trước
+            if (card.color === 'wild') {
+                pendingWildCardIndex = cardIndex;
+                const sub = document.getElementById('color-picker-subtitle');
+                sub.textContent = card.type === 'wild_roulette'
+                    ? "Chọn màu cho Vòng Quay Tử Thần! Người kế tiếp sẽ phải rút cho tới khi ra màu này."
+                    : "Chọn một màu để tiếp tục ván đấu";
+                document.getElementById('modal-color-picker').classList.remove('hidden');
+                return;
+            }
+
+            // Nếu là lá số 7 -> Mở modal chọn đối thủ để đổi bài (nếu người chơi còn hơn 1 lá)
+            if (card.value === '7' && me.hand.length > 1) {
+                const activeOpponents = roomData.players.filter((p, idx) => idx !== myPlayerIndex && !p.eliminated);
+                if (activeOpponents.length > 0) {
+                    pendingSevenCardIndex = cardIndex;
+                    openPlayerPickerModal(
+                        "Luật Số 7: Hoán Đổi Bài",
+                        "Chọn 1 đối thủ để đổi toàn bộ bài trên tay!",
+                        activeOpponents,
+                        (targetUid) => executePlayCard(cardIndex, card.color, targetUid)
+                    );
+                    return;
+                }
+            }
+
+            // Đánh bài trực tiếp
+            await executePlayCard(cardIndex, card.color, null);
+        };
+
+        window.confirmWildColor = async (chosenColor) => {
+            document.getElementById('modal-color-picker').classList.add('hidden');
+            if (pendingWildCardIndex === null) return;
+            const idx = pendingWildCardIndex;
+            pendingWildCardIndex = null;
+            await executePlayCard(idx, chosenColor, null);
+        };
+
+        // Thực thi nước đánh bài và cập nhật lên Firestore
+        async function executePlayCard(cardIndex, chosenColor, swapTargetUid) {
+            const state = JSON.parse(JSON.stringify(roomData));
+            const pIdx = state.players.findIndex(p => p.uid === currentUser.uid);
+            const player = state.players[pIdx];
+            const playedCard = player.hand.splice(cardIndex, 1)[0];
+
+            let actionLog = `${player.name} đã đánh ${formatCardName(playedCard)}.`;
+            let nextColor = chosenColor || playedCard.color;
+            let nextDirection = state.direction;
+            let stepCount = 1;
+
+            // Xử lý hiệu ứng từng loại lá bài
+            if (playedCard.type === 'discard_all') {
+                // Bỏ toàn bộ các lá cùng màu trên tay xuống
+                const sameColorCards = player.hand.filter(c => c.color === playedCard.color);
+                player.hand = player.hand.filter(c => c.color !== playedCard.color);
+                state.discardPile.push(...sameColorCards, playedCard);
+                actionLog = `${player.name} dùng DISCARD ALL, xả sạch ${sameColorCards.length + 1} lá màu ${translateColor(playedCard.color)}!`;
+            } else {
+                state.discardPile.push(playedCard);
+            }
+
+            // Reset trạng thái UNO nếu còn > 1 lá
+            if (player.hand.length !== 1) {
+                player.saidUno = false;
+            }
+
+            // Kiểm tra điều kiện THẮNG ngay lập tức nếu hết bài
+            if (player.hand.length === 0) {
+                playTone('win');
+                await updateDoc(getRoomDocRef(currentRoomCode), {
+                    status: 'finished',
+                    players: state.players,
+                    discardPile: state.discardPile,
+                    activeColor: nextColor,
+                    winnerName: player.name,
+                    winReason: `${player.name} đã đánh hết toàn bộ bài trên tay!`,
+                    lastAction: `${player.name} đã giành chiến thắng!`
+                });
+                return;
+            }
+
+            // Xử lý các lá chức năng đặc biệt
+            const activeCount = state.players.filter(p => !p.eliminated).length;
+
+            if (playedCard.type === 'reverse') {
+                if (activeCount === 2) {
+                    stepCount = 2; // Trong ván 2 người, Reverse hoạt động như Skip
+                } else {
+                    nextDirection = state.direction * -1;
+                }
+                actionLog = `${player.name} đảo chiều vòng chơi!`;
+            } else if (playedCard.type === 'skip') {
+                stepCount = 2;
+                actionLog = `${player.name} cấm lượt người kế tiếp!`;
+            } else if (playedCard.type === 'skip_all') {
+                stepCount = 0; // Đánh tiếp ngay lập tức
+                actionLog = `${player.name} dùng SKIP EVERYONE và được đánh tiếp!`;
+            } else if (playedCard.type === 'draw2' || playedCard.type === 'draw4' || playedCard.type === 'wild_draw6' || playedCard.type === 'wild_draw10') {
+                state.pendingPenalty += playedCard.penalty;
+                state.pendingPenaltyType = 'draw';
+                actionLog = `${player.name} tung ${formatCardName(playedCard)}! Cộng dồn phạt lên +${state.pendingPenalty} lá!`;
+            } else if (playedCard.type === 'wild_rev4') {
+                if (activeCount === 2) {
+                    // Trong 2 người: Reverse+4 quay ngược lại chính người vừa đánh theo luật No Mercy!
+                    stepCount = 0;
+                    state.pendingPenalty += 4;
+                    state.pendingPenaltyType = 'draw';
+                    actionLog = `${player.name} dùng REVERSE +4 trong ván 2 người — gậy ông đập lưng ông (+${state.pendingPenalty})!`;
+                } else {
+                    nextDirection = state.direction * -1;
+                    state.pendingPenalty += 4;
+                    state.pendingPenaltyType = 'draw';
+                    actionLog = `${player.name} đảo chiều và cộng dồn +4 (Tổng phạt: +${state.pendingPenalty})!`;
+                }
+            } else if (playedCard.type === 'wild_roulette') {
+                state.pendingPenaltyType = 'roulette';
+                state.pendingPenalty = 0;
+                actionLog = `${player.name} kích hoạt WILD COLOR ROULETTE chọn màu ${translateColor(nextColor)}!`;
+            } else if (playedCard.value === '0') {
+                // Luật Số 0: Truyền toàn bộ bài trên tay cho người kế tiếp theo chiều đánh
+                const activeIndices = [];
+                state.players.forEach((p, i) => { if (!p.eliminated) activeIndices.push(i); });
+                if (activeIndices.length > 1) {
+                    const handsSnapshot = activeIndices.map(i => [...state.players[i].hand]);
+                    for (let k = 0; k < activeIndices.length; k++) {
+                        const fromPos = k;
+                        const toPos = (k + nextDirection + activeIndices.length) % activeIndices.length;
+                        state.players[activeIndices[toPos]].hand = handsSnapshot[fromPos];
+                        state.players[activeIndices[toPos]].saidUno = false;
+                    }
+                    actionLog = `${player.name} đánh số 0! Tất cả người chơi truyền bài sang người bên cạnh!`;
+                }
+            } else if (playedCard.value === '7' && swapTargetUid) {
+                const targetIdx = state.players.findIndex(p => p.uid === swapTargetUid);
+                if (targetIdx !== -1 && !state.players[targetIdx].eliminated) {
+                    const tempHand = [...player.hand];
+                    player.hand = [...state.players[targetIdx].hand];
+                    state.players[targetIdx].hand = tempHand;
+                    player.saidUno = false;
+                    state.players[targetIdx].saidUno = false;
+                    actionLog = `${player.name} đánh số 7 và đổi toàn bộ bài với ${state.players[targetIdx].name}!`;
+                }
+            }
+
+            const nextTurnIdx = stepCount === 0
+                ? pIdx
+                : getNextActivePlayerIndex(state.players, pIdx, nextDirection, stepCount);
+
+            playTone('play');
+            await updateDoc(getRoomDocRef(currentRoomCode), {
+                players: state.players,
+                discardPile: state.discardPile,
+                activeColor: nextColor,
+                direction: nextDirection,
+                currentTurnIndex: nextTurnIdx,
+                pendingPenalty: state.pendingPenalty,
+                pendingPenaltyType: state.pendingPenaltyType,
+                lastAction: actionLog
+            });
+        }
+
+        // =========================================================================
+        // 7. XỬ LÝ RÚT BÀI, CHỊU PHẠT & LUẬT NHÂN TỪ (25 LÁ BỊ LOẠI)
+        // =========================================================================
+        window.handleDrawAction = async () => {
+            if (!roomData || roomData.status !== 'playing') return;
+            const myIdx = roomData.players.findIndex(p => p.uid === currentUser.uid);
+            if (myIdx !== roomData.currentTurnIndex) {
+                return showToast("Chưa tới lượt của bạn!", "error");
+            }
+
+            const state = JSON.parse(JSON.stringify(roomData));
+            const me = state.players[myIdx];
+            if (me.eliminated) return;
+
+            let actionLog = "";
+            let advanceTurn = true;
+
+            // TRƯỜNG HỢP A: Đang gánh cộng dồn phạt (+2, +4, +6, +10...)
+            if (state.pendingPenalty > 0 && state.pendingPenaltyType === 'draw') {
+                const countToDraw = state.pendingPenalty;
+                for (let i = 0; i < countToDraw; i++) {
+                    const res = replenishDeckIfNeeded(state.deck, state.discardPile);
+                    state.deck = res.deck;
+                    state.discardPile = res.discardPile;
+                    if (state.deck.length > 0) me.hand.push(state.deck.shift());
+                }
+                state.pendingPenalty = 0;
+                state.pendingPenaltyType = null;
+                me.saidUno = false;
+                actionLog = `${me.name} không đỡ nổi và phải rút ${countToDraw} lá bài phạt!`;
+                playTone('penalty');
+            }
+            // TRƯỜNG HỢP B: Đang dính Wild Color Roulette (Rút tới khi gặp màu activeColor)
+            else if (state.pendingPenaltyType === 'roulette') {
+                let drawnCount = 0;
+                let hitColor = false;
+                while (!hitColor && me.hand.length < 25) {
+                    const res = replenishDeckIfNeeded(state.deck, state.discardPile);
+                    state.deck = res.deck;
+                    state.discardPile = res.discardPile;
+                    if (state.deck.length === 0) break;
+                    const drawnCard = state.deck.shift();
+                    me.hand.push(drawnCard);
+                    drawnCount++;
+                    // Trong Roulette, lá Wild đen không tính là màu mục tiêu
+                    if (drawnCard.color === state.activeColor) {
+                        hitColor = true;
+                    }
+                }
+                state.pendingPenaltyType = null;
+                me.saidUno = false;
+                actionLog = `${me.name} quay Color Roulette và phải rút ${drawnCount} lá mới ra màu ${translateColor(state.activeColor)}!`;
+                playTone('penalty');
+            }
+            // TRƯỜNG HỢP C: Rút thông thường (Luật No Mercy: Rút cho đến khi có lá đánh được!)
+            else {
+                let drawnCount = 0;
+                let foundPlayable = false;
+                while (!foundPlayable && me.hand.length < 25) {
+                    const res = replenishDeckIfNeeded(state.deck, state.discardPile);
+                    state.deck = res.deck;
+                    state.discardPile = res.discardPile;
+                    if (state.deck.length === 0) break;
+                    const drawnCard = state.deck.shift();
+                    me.hand.push(drawnCard);
+                    drawnCount++;
+                    if (isCardPlayable(drawnCard, state)) {
+                        foundPlayable = true;
+                    }
+                }
+                me.saidUno = false;
+                playTone('draw');
+
+                if (me.hand.length >= 25) {
+                    actionLog = `${me.name} rút tới ${me.hand.length} lá và chạm ngưỡng tử thần!`;
+                } else {
+                    advanceTurn = false; // Giữ lượt để người chơi đánh lá vừa rút được
+                    actionLog = `${me.name} đã rút ${drawnCount} lá để tìm bài đánh.`;
+                }
+            }
+
+            // KIỂM TRA LUẬT NHÂN TỪ (MERCY RULE: >= 25 LÁ -> LOẠI NGAY LẬP TỨC)
+            if (me.hand.length >= 25) {
+                me.eliminated = true;
+                state.discardPile.push(...me.hand);
+                me.hand = [];
+                actionLog = `💀 LUẬT NHÂN TỪ! ${me.name} cầm đủ 25 lá và ĐÃ BỊ LOẠI khỏi ván đấu!`;
+                advanceTurn = true;
+                playTone('penalty');
+            }
+
+            // Kiểm tra xem còn lại bao nhiêu người chơi sống sót
+            const survivors = state.players.filter(p => !p.eliminated);
+            if (survivors.length === 1) {
+                playTone('win');
+                await updateDoc(getRoomDocRef(currentRoomCode), {
+                    status: 'finished',
+                    players: state.players,
+                    deck: state.deck,
+                    discardPile: state.discardPile,
+                    pendingPenalty: 0,
+                    pendingPenaltyType: null,
+                    winnerName: survivors[0].name,
+                    winReason: `Tất cả đối thủ khác đều bị loại bởi Luật Nhân Từ 25 lá!`,
+                    lastAction: `${survivors[0].name} là người sống sót cuối cùng!`
+                });
+                return;
+            }
+
+            const nextTurnIdx = advanceTurn
+                ? getNextActivePlayerIndex(state.players, myIdx, state.direction, 1)
+                : myIdx;
+
+            await updateDoc(getRoomDocRef(currentRoomCode), {
+                players: state.players,
+                deck: state.deck,
+                discardPile: state.discardPile,
+                pendingPenalty: state.pendingPenalty,
+                pendingPenaltyType: state.pendingPenaltyType,
+                currentTurnIndex: nextTurnIdx,
+                lastAction: actionLog
+            });
+        };
+
+        // =========================================================================
+        // 8. HÔ UNO! & BẮT LỖI QUÊN HÔ UNO (+2 LÁ PHẠT)
+        // =========================================================================
+        window.shoutUno = async () => {
+            if (!roomData || roomData.status !== 'playing') return;
+            const myIdx = roomData.players.findIndex(p => p.uid === currentUser.uid);
+            if (myIdx === -1) return;
+            const me = roomData.players[myIdx];
+
+            if (me.hand.length <= 2 && !me.eliminated) {
+                const updatedPlayers = [...roomData.players];
+                updatedPlayers[myIdx] = { ...me, saidUno: true };
+                playTone('uno');
+                await updateDoc(getRoomDocRef(currentRoomCode), {
+                    players: updatedPlayers,
+                    lastAction: `🔥 ${me.name} đã hô vang UNO!`
+                });
+            } else {
+                showToast("Bạn chỉ có thể hô UNO khi còn 1 hoặc 2 lá bài!", "info");
+            }
+        };
+
+        window.catchUnoPenalty = async () => {
+            if (!roomData || roomData.status !== 'playing') return;
+            const state = JSON.parse(JSON.stringify(roomData));
+            const culpritIdx = state.players.findIndex(p => !p.eliminated && p.hand.length === 1 && !p.saidUno && p.uid !== currentUser.uid);
+
+            if (culpritIdx === -1) {
+                return showToast("Không có ai quên hô UNO lúc này!", "info");
+            }
+
+            const culprit = state.players[culpritIdx];
+            for (let i = 0; i < 2; i++) {
+                const res = replenishDeckIfNeeded(state.deck, state.discardPile);
+                state.deck = res.deck;
+                state.discardPile = res.discardPile;
+                if (state.deck.length > 0) culprit.hand.push(state.deck.shift());
+            }
+            culprit.saidUno = false;
+
+            if (culprit.hand.length >= 25) {
+                culprit.eliminated = true;
+                state.discardPile.push(...culprit.hand);
+                culprit.hand = [];
+            }
+
+            playTone('penalty');
+            await updateDoc(getRoomDocRef(currentRoomCode), {
+                players: state.players,
+                deck: state.deck,
+                discardPile: state.discardPile,
+                lastAction: `🚨 ${culprit.name} bị bắt lỗi quên hô UNO và bị phạt +2 lá!`
+            });
+        };
+
+        // =========================================================================
+        // 9. RENDER GIAO DIỆN THEO TRẠNG THÁI PHÒNG (LOBBY / PLAYING / FINISHED)
+        // =========================================================================
+        function renderAppState() {
+            if (!roomData || !currentUser) return;
+
+            document.getElementById('screen-home').classList.add('hidden');
+            document.getElementById('btn-leave-room').classList.remove('hidden');
+
+            if (roomData.status === 'lobby') {
+                document.getElementById('screen-lobby').classList.remove('hidden');
+                document.getElementById('screen-game').classList.add('hidden');
+                closeAllModals();
+                renderLobby();
+            } else {
+                document.getElementById('screen-lobby').classList.add('hidden');
+                document.getElementById('screen-game').classList.remove('hidden');
+                renderGameTable();
+
+                if (roomData.status === 'finished') {
+                    document.getElementById('winner-announcement').textContent = `🏆 ${roomData.winnerName} Chiến Thắng!`;
+                    document.getElementById('game-over-reason').textContent = roomData.winReason || "";
+                    document.getElementById('btn-play-again').style.display = roomData.hostId === currentUser.uid ? 'block' : 'none';
+                    document.getElementById('modal-game-over').classList.remove('hidden');
+                } else {
+                    document.getElementById('modal-game-over').classList.add('hidden');
+                }
+            }
+        }
+
+        function renderLobby() {
+            document.getElementById('lobby-room-code').textContent = roomData.roomCode;
+            document.getElementById('lobby-player-count').textContent = roomData.players.length;
+
+            const listEl = document.getElementById('lobby-players-list');
+            listEl.innerHTML = roomData.players.map((p, index) => {
+                const isHost = p.uid === roomData.hostId;
+                const isMe = p.uid === currentUser.uid;
+                return `
+                    <div class="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950/90 border ${isMe ? 'border-amber-500/50' : 'border-slate-800'}">
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center font-game font-bold text-white">
+                                ${index + 1}
+                            </div>
+                            <div>
+                                <div class="font-bold text-sm text-white flex items-center gap-1.5">
+                                    <span>${escapeHtml(p.name)}</span>
+                                    ${isMe ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">Bạn</span>' : ''}
+                                </div>
+                                <div class="text-[11px] text-slate-400">${isHost ? 'Chủ phòng' : 'Thành viên'}</div>
+                            </div>
+                        </div>
+                        ${isHost ? '<i class="fa-solid fa-crown text-amber-400"></i>' : '<i class="fa-solid fa-circle-check text-emerald-500 text-xs"></i>'}
+                    </div>
+                `;
+            }).join('');
+
+            const isMeHost = roomData.hostId === currentUser.uid;
+            document.getElementById('lobby-host-controls').classList.toggle('hidden', !isMeHost);
+            document.getElementById('lobby-guest-wait').classList.toggle('hidden', isMeHost);
+
+            const startBtn = document.getElementById('btn-start-game');
+            startBtn.disabled = roomData.players.length < 2;
+        }
+
+        function renderGameTable() {
+            document.getElementById('game-room-code').textContent = roomData.roomCode;
+            document.getElementById('deck-count').textContent = roomData.deck.length;
+            document.getElementById('last-action-banner').textContent = roomData.lastAction || "";
+
+            // Chiều vòng chơi
+            const dirIcon = document.getElementById('direction-icon');
+            const dirText = document.getElementById('direction-text');
+            if (roomData.direction === 1) {
+                dirIcon.className = 'fa-solid fa-rotate-right text-emerald-400';
+                dirText.textContent = 'Thuận chiều';
+            } else {
+                dirIcon.className = 'fa-solid fa-rotate-left text-amber-400';
+                dirText.textContent = 'Ngược chiều';
+            }
+
+            // Quả cầu màu sắc trung tâm
+            const orb = document.getElementById('active-color-orb');
+            const colorLabel = document.getElementById('active-color-label');
+            const colorMap = {
+                red: { bg: 'bg-red-600 shadow-red-600/50', text: 'MÀU ĐỎ' },
+                blue: { bg: 'bg-blue-600 shadow-blue-600/50', text: 'XANH DƯƠNG' },
+                green: { bg: 'bg-emerald-600 shadow-emerald-600/50', text: 'XANH LÁ' },
+                yellow: { bg: 'bg-amber-400 shadow-amber-400/50', text: 'MÀU VÀNG' }
+            };
+            const activeStyle = colorMap[roomData.activeColor] || colorMap.red;
+            orb.className = `w-14 h-14 sm:w-16 sm:h-16 rounded-full border-4 border-white/85 shadow-xl flex items-center justify-center transition-colors duration-300 ${activeStyle.bg}`;
+            colorLabel.textContent = activeStyle.text;
+
+            // Cảnh báo cộng dồn phạt
+            const penaltyBadge = document.getElementById('penalty-stack-badge');
+            if (roomData.pendingPenalty > 0 && roomData.pendingPenaltyType === 'draw') {
+                penaltyBadge.classList.remove('hidden');
+                document.getElementById('penalty-stack-value').textContent = roomData.pendingPenalty;
+            } else {
+                penaltyBadge.classList.add('hidden');
+            }
+
+            // Lá bài trên cùng của Discard Pile
+            const topCard = roomData.discardPile[roomData.discardPile.length - 1];
+            document.getElementById('discard-pile-slot').innerHTML = topCard ? createCardHTML(topCard, false, -1) : '';
+
+            // Danh sách người chơi (Opponents bar)
+            const opponentsBar = document.getElementById('opponents-bar');
+            opponentsBar.innerHTML = roomData.players.map((p, idx) => {
+                const isTurn = idx === roomData.currentTurnIndex && !p.eliminated;
+                const isMe = p.uid === currentUser.uid;
+                const dangerLevel = p.hand.length >= 20;
+                return `
+                    <div class="p-2.5 rounded-2xl border transition ${
+                        p.eliminated
+                            ? 'bg-slate-950/40 border-slate-900 opacity-50'
+                            : isTurn
+                                ? 'bg-slate-900 border-red-500 active-turn-ring'
+                                : 'bg-slate-900/75 border-slate-800'
+                    }">
+                        <div class="flex items-center justify-between gap-1 mb-1">
+                            <span class="font-bold text-xs truncate ${isMe ? 'text-amber-400' : 'text-white'}">
+                                ${escapeHtml(p.name)} ${isMe ? '(Bạn)' : ''}
+                            </span>
+                            ${p.saidUno && p.hand.length === 1 ? '<span class="px-1.5 py-0.5 rounded bg-red-600 text-[9px] font-black text-white">UNO!</span>' : ''}
+                        </div>
+                        <div class="flex items-center justify-between text-[11px]">
+                            ${p.eliminated
+                                ? '<span class="text-red-500 font-bold"><i class="fa-solid fa-skull mr-1"></i>BỊ LOẠI (25+)</span>'
+                                : `<span class="${dangerLevel ? 'text-red-400 font-bold animate-pulse' : 'text-slate-400'}">
+                                    <i class="fa-solid fa-layer-group mr-1"></i>${p.hand.length}/25 lá
+                                   </span>`
+                            }
+                            ${isTurn ? '<span class="text-emerald-400 font-bold text-[10px]">Đang đánh</span>' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Tay bài của chính người chơi
+            const myIdx = roomData.players.findIndex(p => p.uid === currentUser.uid);
+            const me = roomData.players[myIdx];
+            const isMyTurn = myIdx === roomData.currentTurnIndex && me && !me.eliminated && roomData.status === 'playing';
+
+            const turnIndicator = document.getElementById('my-turn-indicator');
+            const drawLabel = document.getElementById('draw-pile-label');
+
+            if (me && me.eliminated) {
+                turnIndicator.className = 'px-3 py-1 rounded-full bg-red-950 border border-red-700 text-red-400 text-xs font-bold';
+                turnIndicator.textContent = '💀 Bạn đã bị loại do cầm đủ 25 lá!';
+                drawLabel.textContent = 'Đã bị loại';
+            } else if (isMyTurn) {
+                turnIndicator.className = 'px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs font-bold animate-pulse';
+                turnIndicator.textContent = roomData.pendingPenalty > 0
+                    ? `🔥 Lượt bạn! Đỡ +${roomData.pendingPenalty} hoặc rút phạt`
+                    : roomData.pendingPenaltyType === 'roulette'
+                        ? `🎡 Lượt bạn! Bấm Rút Bài cho Roulette`
+                        : '⚡ TỚI LƯỢT BẠN!';
+                drawLabel.textContent = roomData.pendingPenalty > 0
+                    ? `Chịu phạt +${roomData.pendingPenalty}`
+                    : roomData.pendingPenaltyType === 'roulette'
+                        ? 'Quay Roulette'
+                        : 'Bấm rút bài';
+            } else {
+                const activePlayer = roomData.players[roomData.currentTurnIndex];
+                turnIndicator.className = 'px-3 py-1 rounded-full bg-slate-800 text-slate-400 text-xs font-semibold';
+                turnIndicator.textContent = `Đang chờ ${activePlayer ? activePlayer.name : '...'}`;
+                drawLabel.textContent = 'Rút bài';
+            }
+
+            document.getElementById('my-card-count').textContent = me ? me.hand.length : 0;
+
+            // Hiển thị nút Bắt Lỗi UNO nếu có đối thủ còn 1 lá mà chưa hô UNO
+            const hasUncaughtUno = roomData.players.some(p => !p.eliminated && p.hand.length === 1 && !p.saidUno && p.uid !== currentUser.uid);
+            document.getElementById('btn-catch-uno').classList.toggle('hidden', !hasUncaughtUno);
+
+            // Render từng lá bài trên tay
+            const handContainer = document.getElementById('my-hand-container');
+            if (!me || me.eliminated) {
+                handContainer.innerHTML = `<div class="w-full text-center text-sm text-slate-500 py-6">Bạn đang ở chế độ khán giả theo dõi phần còn lại của ván đấu.</div>`;
+            } else {
+                handContainer.innerHTML = me.hand.map((card, index) => {
+                    const playable = isMyTurn && isCardPlayable(card, roomData);
+                    return createCardHTML(card, playable, index);
+                }).join('');
+            }
+        }
+
+        // =========================================================================
+        // 10. CÁC HÀM TIỆN ÍCH HIỂN THỊ LÁ BÀI & MODAL
+        // =========================================================================
+        function createCardHTML(card, playable, index) {
+            const bgClass = `card-${card.color}`;
+            const textClass = `text-card-${card.color}`;
+            const stateClass = index === -1
+                ? 'w-full'
+                : playable
+                    ? 'w-20 sm:w-24 uno-card-playable'
+                    : 'w-20 sm:w-24 uno-card-disabled';
+
+            const clickAttr = (index !== -1 && playable) ? `onclick="onCardClick(${index})"` : '';
+
+            let centerLabel = card.value;
+            let cornerLabel = card.value;
+
+            if (card.type === 'skip') {
+                centerLabel = '<i class="fa-solid fa-ban text-2xl sm:text-3xl"></i>';
+                cornerLabel = '<i class="fa-solid fa-ban"></i>';
+            } else if (card.type === 'reverse') {
+                centerLabel = '<i class="fa-solid fa-repeat text-2xl sm:text-3xl"></i>';
+                cornerLabel = '<i class="fa-solid fa-repeat"></i>';
+            } else if (card.type === 'skip_all') {
+                centerLabel = '<i class="fa-solid fa-forward-fast text-xl sm:text-2xl"></i>';
+                cornerLabel = 'SKIP ALL';
+            } else if (card.type === 'discard_all') {
+                centerLabel = '<i class="fa-solid fa-layer-group text-xl sm:text-2xl"></i>';
+                cornerLabel = 'ALL';
+            } else if (card.type === 'wild_rev4') {
+                centerLabel = '<span class="text-sm sm:text-base leading-tight block">REV<br>+4</span>';
+                cornerLabel = 'R+4';
+            } else if (card.type === 'wild_roulette') {
+                centerLabel = '<i class="fa-solid fa-dharmachakra text-2xl sm:text-3xl"></i>';
+                cornerLabel = 'COLOR';
+            }
+
+            return `
+                <div ${clickAttr} class="uno-card ${bgClass} ${stateClass} select-none">
+                    <span class="absolute top-1.5 left-2 text-[10px] sm:text-xs font-game font-black text-white drop-shadow">
+                        ${cornerLabel}
+                    </span>
+                    <div class="uno-oval">
+                        <div class="uno-oval-inner ${textClass} text-xl sm:text-2xl font-black text-center leading-none">
+                            ${centerLabel}
+                        </div>
+                    </div>
+                    <span class="absolute bottom-1.5 right-2 text-[10px] sm:text-xs font-game font-black text-white drop-shadow rotate-180">
+                        ${cornerLabel}
+                    </span>
+                </div>
+            `;
+        }
+
+        function formatCardName(card) {
+            const cName = translateColor(card.color);
+            if (card.type === 'number') return `Số ${card.value} (${cName})`;
+            if (card.type === 'skip') return `Cấm Lượt (${cName})`;
+            if (card.type === 'reverse') return `Đảo Chiều (${cName})`;
+            if (card.type === 'draw2') return `+2 (${cName})`;
+            if (card.type === 'draw4') return `+4 (${cName})`;
+            if (card.type === 'discard_all') return `Bỏ Hết Màu (${cName})`;
+            if (card.type === 'skip_all') return `Cấm Tất Cả (${cName})`;
+            if (card.type === 'wild_rev4') return `Reverse +4`;
+            if (card.type === 'wild_draw6') return `Wild +6`;
+            if (card.type === 'wild_draw10') return `Wild +10`;
+            if (card.type === 'wild_roulette') return `Wild Color Roulette`;
+            return card.value;
+        }
+
+        function translateColor(color) {
+            const map = { red: 'Đỏ', blue: 'Xanh Dương', green: 'Xanh Lá', yellow: 'Vàng', wild: 'Đa Sắc' };
+            return map[color] || color;
+        }
+
+        function openPlayerPickerModal(title, desc, playersList, onSelectCallback) {
+            document.getElementById('player-picker-title').textContent = title;
+            document.getElementById('player-picker-desc').textContent = desc;
+            const listEl = document.getElementById('player-picker-list');
+            listEl.innerHTML = '';
+
+            playersList.forEach(p => {
+                const btn = document.createElement('button');
+                btn.className = "w-full py-3 px-4 rounded-2xl bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-white font-bold flex items-center justify-between transition";
+                btn.innerHTML = `
+                    <span>${escapeHtml(p.name)}</span>
+                    <span class="text-xs opacity-80">${p.hand.length} lá</span>
+                `;
+                btn.onclick = () => {
+                    document.getElementById('modal-player-picker').classList.add('hidden');
+                    onSelectCallback(p.uid);
+                };
+                listEl.appendChild(btn);
+            });
+
+            document.getElementById('modal-player-picker').classList.remove('hidden');
+        }
+
+        window.toggleRulesModal = (show) => {
+            document.getElementById('modal-rules').classList.toggle('hidden', !show);
+        };
+
+        function closeAllModals() {
+            document.getElementById('modal-color-picker').classList.add('hidden');
+            document.getElementById('modal-player-picker').classList.add('hidden');
+            document.getElementById('modal-game-over').classList.add('hidden');
+            document.getElementById('modal-rules').classList.add('hidden');
+        }
+
+        function showToast(msg, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            const colors = {
+                info: 'bg-slate-900/95 border-slate-700 text-slate-200',
+                success: 'bg-emerald-950/95 border-emerald-600 text-emerald-200',
+                error: 'bg-red-950/95 border-red-600 text-red-200'
+            };
+            toast.className = `px-4 py-3 rounded-2xl border backdrop-blur-md text-xs sm:text-sm font-semibold shadow-xl text-center transition-all duration-300 ${colors[type] || colors.info}`;
+            toast.textContent = msg;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"']/g, m => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[m]));
+        }
+    </script>
+</body>
+</html>
